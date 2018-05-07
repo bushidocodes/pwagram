@@ -1,0 +1,16 @@
+{
+  "name": "pwa-gram",
+  "version": "1.0.0",
+  "description":
+    "A simple Instagram clone built using Progressive Web App techniques.",
+  "main": "index.js",
+  "scripts": {
+    "start": "http-server -c-1"
+  },
+  "keywords": ["pwa", "progressive", "web", "app"],
+  "author": "Sean McBride",
+  "license": "ISC",
+  "devDependencies": {
+    "http-server": "^0.10.0"
+  }
+}

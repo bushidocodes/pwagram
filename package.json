@@ -5,12 +5,14 @@
     "A simple Instagram clone built using Progressive Web App techniques.",
   "main": "index.js",
   "scripts": {
-    "start": "http-server -p 1337 -c-1"
+    "start": "http-server -p 1337 -c-1",
+    "remote-ios": "remotedebug_ios_webkit_adapter --port=9000"
   },
   "keywords": ["pwa", "progressive", "web", "app"],
   "author": "Sean McBride",
   "license": "ISC",
   "devDependencies": {
-    "http-server": "^0.10.0"
+    "http-server": "^0.10.0",
+    "remotedebug-ios-webkit-adapter": "^0.2.2"
   }
 }

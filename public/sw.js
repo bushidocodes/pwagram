@@ -10,6 +10,6 @@ self.addEventListener("activate", event => {
 
 // Fetch Proxy
 self.addEventListener("fetch", event => {
-  console.log("[Service Worker] Fetching...", event);
+  // console.log("[Service Worker] Fetching...", event);
   event.respondWith(fetch(event.request));
 });

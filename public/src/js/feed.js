@@ -58,9 +58,5 @@ function createCard() {
 }
 
 fetch("https://httpbin.org/get")
-  .then(function(res) {
-    return res.json();
-  })
-  .then(function(data) {
-    createCard();
-  });
+  .then(res => res.json())
+  .then(data => createCard());

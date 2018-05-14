@@ -52,10 +52,28 @@ function createCard() {
   cardSupportingText.className = "mdl-card__supporting-text";
   cardSupportingText.textContent = "In San Francisco";
   cardSupportingText.style.textAlign = "center";
+  // Disabled functionality for "Cache On Demand" where a user can save
+  // certain dynamic items into the cache
+  // Add a save button only if in a browser that supports the Caching API
+  // if ("caches" in window) {
+  //   const cardSaveButton = document.createElement("button");
+  //   cardSaveButton.textContent = "Save";
+  //   cardSaveButton.addEventListener("click", onSaveButtonClicked);
+  //   cardSupportingText.appendChild(cardSaveButton);
+  // }
   cardWrapper.appendChild(cardSupportingText);
   componentHandler.upgradeElement(cardWrapper);
   sharedMomentsArea.appendChild(cardWrapper);
 }
+
+// Currently not in use. Used to support the "Cache on Demand Strategy"
+// function onSaveButtonClicked(evt) {
+//   if ("caches" in window) {
+//     caches.open("user-requested").then(cache => {
+//       cache.addAll(["https://httpbin.org/get", "/src/images/sf-boat.jpg"]);
+//     });
+//   }
+// }
 
 fetch("https://httpbin.org/get")
   .then(res => res.json())

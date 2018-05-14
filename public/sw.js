@@ -1,4 +1,6 @@
 const SW_VERSION = "2";
+const CACHE_STATIC_NAME = `static-v${SW_VERSION}`;
+const CACHE_DYNAMIC_NAME = `dynamic-v${SW_VERSION}`;
 
 // Service Worker Lifecycle Events
 self.addEventListener("install", event => {
@@ -6,14 +8,15 @@ self.addEventListener("install", event => {
   // When we install our service worker, we want to cache all of the static
   // assets needed to render our app shell
   event.waitUntil(
-    caches.open(`static-v${SW_VERSION}`).then(cache => {
+    caches.open(CACHE_STATIC_NAME).then(cache => {
       console.log(
-        `[Service Worker v${SW_VERSION}] Precaching App Shell to static-v${SW_VERSION}...`
+        `[Service Worker v${SW_VERSION}] Precaching App Shell to ${CACHE_STATIC_NAME}...`
       );
       cache.addAll([
         "/",
-        "/help/",
+        // "/help/",
         "/index.html",
+        "/fallback.html",
         "/src/css/app.css",
         "/src/css/feed.css",
         "/src/css/help.css",
@@ -69,19 +72,20 @@ self.addEventListener("fetch", event => {
           `[Service Worker v${SW_VERSION}] Fetching...`,
           event.request.url
         );
-        return (
-          fetch(event.request)
-            .then(fetchResponse =>
-              caches.open(`dynamic-v${SW_VERSION}`).then(cache => {
-                // responses can only be used once, so we need to use the response
-                // object's clone method to cache the response without consuming it
-                cache.put(event.request.url, fetchResponse.clone());
-                return fetchResponse;
-              })
-            )
-            // Silently catch errors thrown because we were offline
-            .catch(err => {})
-        );
+        return fetch(event.request)
+          .then(fetchResponse =>
+            caches.open(CACHE_DYNAMIC_NAME).then(cache => {
+              // responses can only be used once, so we need to use the response
+              // object's clone method to cache the response without consuming it
+              cache.put(event.request.url, fetchResponse.clone());
+              return fetchResponse;
+            })
+          )
+          .catch(err => {
+            return caches
+              .open(CACHE_STATIC_NAME)
+              .then(cache => cache.match("/fallback.html"));
+          });
       } else {
         return cacheResponse;
       }

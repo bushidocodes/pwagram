@@ -1,11 +1,15 @@
+const SW_VERSION = "2";
+
 // Service Worker Lifecycle Events
 self.addEventListener("install", event => {
-  console.log("[Service Worker] Installing Service Worker ...", event);
+  console.log(`[Service Worker v${SW_VERSION}] Installing...`, event);
   // When we install our service worker, we want to cache all of the static
   // assets needed to render our app shell
   event.waitUntil(
-    caches.open("static").then(cache => {
-      console.log("[Service Worker] Precaching App Shell to static...");
+    caches.open(`static-v${SW_VERSION}`).then(cache => {
+      console.log(
+        `[Service Worker v${SW_VERSION}] Precaching App Shell to static-v${SW_VERSION}...`
+      );
       cache.addAll([
         "/",
         "/help/",
@@ -27,7 +31,25 @@ self.addEventListener("install", event => {
 });
 
 self.addEventListener("activate", event => {
-  console.log("[Service Worker] Activating Service Worker ...", event);
+  console.log(`[Service Worker v${SW_VERSION}] Activating...`, event);
+  // Prune all caches that are not appended with the appropriate SW version
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys.map(key => {
+          if (!key.includes(`-v${SW_VERSION}`)) {
+            console.log(
+              `[Service Worker v${SW_VERSION}] Removing old cache ${key}`
+            );
+            return caches.delete(key);
+          } else {
+            // Otherwise just immediately resolve so that Promise.all receives a Promise
+            return Promise.resolve();
+          }
+        })
+      )
+    )
+  );
   return self.clients.claim();
 });
 
@@ -43,14 +65,22 @@ self.addEventListener("fetch", event => {
       // for future requests, and return the result.
       // If cacheResponse is truthy, we return the response immediately
       if (!cacheResponse) {
-        console.log("[Service Worker] Fetching...", event.request.url);
-        return fetch(event.request).then(fetchResponse =>
-          caches.open("dynamic").then(cache => {
-            // responses can only be used once, so we need to use the response
-            // object's clone method to cache the response without consuming it
-            cache.put(event.request.url, fetchResponse.clone());
-            return fetchResponse;
-          })
+        console.log(
+          `[Service Worker v${SW_VERSION}] Fetching...`,
+          event.request.url
+        );
+        return (
+          fetch(event.request)
+            .then(fetchResponse =>
+              caches.open(`dynamic-v${SW_VERSION}`).then(cache => {
+                // responses can only be used once, so we need to use the response
+                // object's clone method to cache the response without consuming it
+                cache.put(event.request.url, fetchResponse.clone());
+                return fetchResponse;
+              })
+            )
+            // Silently catch errors thrown because we were offline
+            .catch(err => {})
         );
       } else {
         return cacheResponse;

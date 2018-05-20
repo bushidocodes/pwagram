@@ -25,6 +25,14 @@ function openCreatePostModal() {
       window.deferredPrompt = null;
     });
   }
+
+  // Sample code for programatically wiping service workers
+  // if ("serviceWorker" in navigator) {
+  //   navigator.serviceWorker.getRegistrations().then(registrations => {
+  //     console.log("Unregistering service workers");
+  //     registrations.forEach(registration => registration.unregister());
+  //   });
+  // }
 }
 
 function closeCreatePostModal() {
@@ -35,22 +43,37 @@ shareImageButton.addEventListener("click", openCreatePostModal);
 
 closeCreatePostModalButton.addEventListener("click", closeCreatePostModal);
 
-function createCard() {
+/**
+ * Remove all of the cards from the shared moments area
+ */
+function clearCards() {
+  while (sharedMomentsArea.hasChildNodes()) {
+    sharedMomentsArea.removeChild(sharedMomentsArea.lastChild);
+  }
+}
+
+function createCard(card) {
+  console.log("creating card", card);
   var cardWrapper = document.createElement("div");
   cardWrapper.className = "shared-moment-card mdl-card mdl-shadow--2dp";
   var cardTitle = document.createElement("div");
   cardTitle.className = "mdl-card__title";
-  cardTitle.style.backgroundImage = 'url("/src/images/sf-boat.jpg")';
-  cardTitle.style.backgroundSize = "cover";
+  cardTitle.style.backgroundImage = `url(${card.image})`;
+  cardTitle.style.backgroundSize = "contain";
+  cardTitle.style.backgroundRepeat = "no-repeat";
+  cardTitle.style.backgroundColor = "black";
+  cardTitle.style.backgroundPosition = "center";
+  // cardTitle.style["background-size"] = "auto;";
   cardTitle.style.height = "180px";
+  // cardTitle.style.height = "auto";
   cardWrapper.appendChild(cardTitle);
   var cardTitleTextElement = document.createElement("h2");
   cardTitleTextElement.className = "mdl-card__title-text";
-  cardTitleTextElement.textContent = "San Francisco Trip";
+  cardTitleTextElement.textContent = card.title;
   cardTitle.appendChild(cardTitleTextElement);
   var cardSupportingText = document.createElement("div");
   cardSupportingText.className = "mdl-card__supporting-text";
-  cardSupportingText.textContent = "In San Francisco";
+  cardSupportingText.textContent = card.location;
   cardSupportingText.style.textAlign = "center";
   // Disabled functionality for "Cache On Demand" where a user can save
   // certain dynamic items into the cache
@@ -75,6 +98,56 @@ function createCard() {
 //   }
 // }
 
-fetch("https://httpbin.org/get")
-  .then(res => res.json())
-  .then(data => createCard());
+function updateUI(cards) {
+  cards.forEach(card => createCard(card));
+}
+
+const url = "https://pwagram-439bb.firebaseio.com/posts.json";
+let networkDataReceived = false;
+// Fetch from Web
+fetch(url)
+  .then(res => {
+    if (res) {
+      return res.json();
+    }
+  })
+  .then(data => {
+    networkDataReceived = true;
+    console.log("From Web: ", data);
+    // When we get this data, always blow away the data rendered from the cache, as this is more fresh
+    clearCards();
+    updateUI(Object.values(data));
+  });
+
+// Fetch from IndexedDB
+if ("indexedDB" in window) {
+  getItems("posts").then(posts => {
+    if (!networkDataReceived) {
+      console.log("From cache", posts);
+      updateUI(posts);
+    }
+  });
+}
+
+// Fetch from Cache
+// if ("caches" in window) {
+//   caches
+//     .match(url)
+//     .then(res => {
+//       if (res) {
+//         return res.json();
+//       }
+//     })
+//     .then(data => {
+//       console.log("From Cache ", data);
+//       // If we've already received a response from the network, it's more current than this cached data, so don't do anything
+//       if (!networkDataReceived && data) {
+//         clearCards();
+//         updateUI(Object.values(data));
+//       }
+//     });
+// }
+
+// fetch("https://httpbin.org/get")
+//   .then(res => res.json())
+//   .then(data => createCard());

@@ -1,4 +1,4 @@
-const SW_VERSION = "2";
+const SW_VERSION = "3";
 const CACHE_STATIC_NAME = `static-v${SW_VERSION}`;
 const CACHE_DYNAMIC_NAME = `dynamic-v${SW_VERSION}`;
 
@@ -14,7 +14,7 @@ self.addEventListener("install", event => {
       );
       cache.addAll([
         "/",
-        // "/help/",
+        "/help/",
         "/index.html",
         "/fallback.html",
         "/src/css/app.css",
@@ -56,39 +56,62 @@ self.addEventListener("activate", event => {
   return self.clients.claim();
 });
 
-// Fetch Proxy
+// Fetch Proxy using Cache with Network Fallback Strategy
+// self.addEventListener("fetch", event => {
+//   // Intercept Fetch requests for the static content that comprises
+//   // our app shell and instead serve this out of the Cache
+//   event.respondWith(
+//     caches.match(event.request).then(cacheResponse => {
+//       // return the cached response if it exists, else fetch over the network
+//       // If cacheResponse is null, nothing in the caches matched the request,
+//       // so we fetch the response over the network, cache a clone of the result
+//       // for future requests, and return the result.
+//       // If cacheResponse is truthy, we return the response immediately
+//       if (!cacheResponse) {
+//         console.log(
+//           `[Service Worker v${SW_VERSION}] Fetching...`,
+//           event.request.url
+//         );
+//         return fetch(event.request)
+//           .then(fetchResponse =>
+//             caches.open(CACHE_DYNAMIC_NAME).then(cache => {
+//               // responses can only be used once, so we need to use the response
+//               // object's clone method to cache the response without consuming it
+//               cache.put(event.request.url, fetchResponse.clone());
+//               return fetchResponse;
+//             })
+//           )
+//           .catch(err => {
+//             return caches
+//               .open(CACHE_STATIC_NAME)
+//               .then(cache => cache.match("/fallback.html"));
+//           });
+//       } else {
+//         return cacheResponse;
+//       }
+//     })
+//   );
+// });
+
+// network than cache strategy. This isn't very user friendly because network requests
+// can take a long time to time out
 self.addEventListener("fetch", event => {
-  // Intercept Fetch requests for the static content that comprises
-  // our app shell and instead serve this out of the Cache
   event.respondWith(
-    caches.match(event.request).then(cacheResponse => {
-      // return the cached response if it exists, else fetch over the network
-      // If cacheResponse is null, nothing in the caches matched the request,
-      // so we fetch the response over the network, cache a clone of the result
-      // for future requests, and return the result.
-      // If cacheResponse is truthy, we return the response immediately
-      if (!cacheResponse) {
-        console.log(
-          `[Service Worker v${SW_VERSION}] Fetching...`,
-          event.request.url
-        );
-        return fetch(event.request)
-          .then(fetchResponse =>
-            caches.open(CACHE_DYNAMIC_NAME).then(cache => {
-              // responses can only be used once, so we need to use the response
-              // object's clone method to cache the response without consuming it
-              cache.put(event.request.url, fetchResponse.clone());
-              return fetchResponse;
-            })
-          )
-          .catch(err => {
-            return caches
-              .open(CACHE_STATIC_NAME)
-              .then(cache => cache.match("/fallback.html"));
-          });
-      } else {
-        return cacheResponse;
-      }
-    })
+    fetch(event.request)
+      .then(async fetchResponse => {
+        await caches.open(CACHE_DYNAMIC_NAME).then(cache => {
+          // responses can only be used once, so we need to use the response
+          // object's clone method to cache the response without consuming it
+          cache.put(event.request.url, fetchResponse.clone());
+        });
+        return fetchResponse;
+      })
+      .catch(err => {
+        return caches.match(event.request).catch(err => {
+          return caches
+            .open(CACHE_STATIC_NAME)
+            .then(cache => cache.match("/fallback.html"));
+        });
+      })
   );
 });

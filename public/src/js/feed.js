@@ -6,7 +6,8 @@ var closeCreatePostModalButton = document.querySelector(
 var sharedMomentsArea = document.querySelector("#shared-moments");
 
 function openCreatePostModal() {
-  createPostArea.style.display = "block";
+  createPostArea.style.transform = "translateY(0)";
+  // createPostArea.style.transform = "translateY(0)";
   // We want to present the user the PWA installation prompt if
   // they demonstrate intent to upload a picture. This is only
   // possible if we've captured and deferred the prompt. We do
@@ -36,7 +37,7 @@ function openCreatePostModal() {
 }
 
 function closeCreatePostModal() {
-  createPostArea.style.display = "none";
+  createPostArea.style.transform = "translateY(100vh)";
 }
 
 shareImageButton.addEventListener("click", openCreatePostModal);
@@ -59,12 +60,10 @@ function createCard(card) {
   var cardTitle = document.createElement("div");
   cardTitle.className = "mdl-card__title";
   cardTitle.style.backgroundImage = `url(${card.image})`;
-  cardTitle.style.backgroundSize = "contain";
+  cardTitle.style.backgroundSize = "cover";
   cardTitle.style.backgroundRepeat = "no-repeat";
   cardTitle.style.backgroundColor = "black";
   cardTitle.style.backgroundPosition = "center";
-  // cardTitle.style["background-size"] = "auto;";
-  cardTitle.style.height = "180px";
   // cardTitle.style.height = "auto";
   cardWrapper.appendChild(cardTitle);
   var cardTitleTextElement = document.createElement("h2");

@@ -143,8 +143,7 @@ self.addEventListener("fetch", event => {
   const url = "https://pwagram-439bb.firebaseio.com/posts.json";
 
   if (isInArray(url, event.request.url)) {
-    // Intercept Fetch requests for the static content that comprises
-    // our app shell and instead serve this out of the Cache
+    // Intercept requests for JSON from the endpoint stored at URL
     event.respondWith(
       fetch(event.request).then(res => {
         const cloneRes = res.clone();

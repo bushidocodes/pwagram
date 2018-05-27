@@ -18,25 +18,15 @@ function openCreatePostModal() {
   if (window.deferredPrompt) {
     window.deferredPrompt.prompt();
     window.deferredPrompt.userChoice.then(choiceResult => {
-      console.log(choiceResult.outcome);
-
       if (choiceResult.outcome === "dismissed") {
-        console.log("User cancelled PWA installation");
+        console.log("[App] User cancelled PWA installation");
       } else {
-        console.log("User added PWA to Home Screen");
+        console.log("[App] User added PWA to Home Screen");
       }
 
       window.deferredPrompt = null;
     });
   }
-
-  // Sample code for programatically wiping service workers
-  // if ("serviceWorker" in navigator) {
-  //   navigator.serviceWorker.getRegistrations().then(registrations => {
-  //     console.log("Unregistering service workers");
-  //     registrations.forEach(registration => registration.unregister());
-  //   });
-  // }
 }
 
 function closeCreatePostModal() {
@@ -76,28 +66,10 @@ function createCard(card) {
   cardSupportingText.className = "mdl-card__supporting-text";
   cardSupportingText.textContent = card.location;
   cardSupportingText.style.textAlign = "center";
-  // Disabled functionality for "Cache On Demand" where a user can save
-  // certain dynamic items into the cache
-  // Add a save button only if in a browser that supports the Caching API
-  // if ("caches" in window) {
-  //   const cardSaveButton = document.createElement("button");
-  //   cardSaveButton.textContent = "Save";
-  //   cardSaveButton.addEventListener("click", onSaveButtonClicked);
-  //   cardSupportingText.appendChild(cardSaveButton);
-  // }
   cardWrapper.appendChild(cardSupportingText);
   componentHandler.upgradeElement(cardWrapper);
   sharedMomentsArea.appendChild(cardWrapper);
 }
-
-// Currently not in use. Used to support the "Cache on Demand Strategy"
-// function onSaveButtonClicked(evt) {
-//   if ("caches" in window) {
-//     caches.open("user-requested").then(cache => {
-//       cache.addAll(["https://httpbin.org/get", "/src/images/sf-boat.jpg"]);
-//     });
-//   }
-// }
 
 function updateUI(cards) {
   cards.forEach(card => createCard(card));
@@ -105,27 +77,33 @@ function updateUI(cards) {
 
 function loadDataAndUpdate() {
   const url = "https://pwagram-439bb.firebaseio.com/posts.json";
+  console.log(
+    `[App]: Updating Posts using Network with Cache Fallback Strategy`
+  );
   let networkDataReceived = false;
   // Fetch from Web
   fetch(url)
     .then(res => {
-      if (res) {
+      if (res.ok) {
         return res.json();
       }
     })
     .then(data => {
       networkDataReceived = true;
-      console.log("From Web: ", data);
+      console.log("[App] Successfully fetched posts from network ", data);
       // When we get this data, always blow away the data rendered from the cache, as this is more fresh
       clearCards();
       updateUI(Object.values(data));
+    })
+    .catch(err => {
+      console.log(`[App] Failed to fetch posts from network`);
     });
 
   // Fetch from IndexedDB
   if ("indexedDB" in window) {
     getItems("posts").then(posts => {
       if (!networkDataReceived) {
-        console.log("From cache", posts);
+        console.log("[App] Successfully fetched posts from IDB");
         updateUI(posts);
       }
     });
@@ -158,23 +136,32 @@ loadDataAndUpdate();
 //   .then(data => createCard());
 
 function sendData() {
-  return fetch(url, {
-    method: "post",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json"
-    },
-    body: JSON.stringify({
-      id: new Date().toISOString,
-      title: titleInput.value,
-      location: locationInput.value,
-      image:
-        "https://firebasestorage.googleapis.com/v0/b/pwagram-439bb.appspot.com/o/18881854_10100539690981860_7876229254760009149_n.jpg?alt=media&token=a49cd401-bd51-4123-80c8-c2536c657944"
+  const reqBody = {
+    id: new Date().toISOString,
+    title: titleInput.value,
+    location: locationInput.value,
+    image:
+      "https://firebasestorage.googleapis.com/v0/b/pwagram-439bb.appspot.com/o/18881854_10100539690981860_7876229254760009149_n.jpg?alt=media&token=a49cd401-bd51-4123-80c8-c2536c657944"
+  };
+  console.log(`[App] Submitting post data`, reqBody);
+  return fetch(
+    "https://us-central1-pwagram-439bb.cloudfunctions.net/storePostData",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify(reqBody)
+    }
+  )
+    .then(res => {
+      console.log(`[App] Successfully submitted post data`, res);
+      loadDataAndUpdate();
     })
-  }).then(res => {
-    console.log(res);
-    loadDataAndUpdate();
-  });
+    .catch(err => {
+      console.log(`[App] Failed to submit post data`, res);
+    });
 }
 
 form.addEventListener("submit", evt => {
@@ -187,6 +174,7 @@ form.addEventListener("submit", evt => {
   closeCreatePostModal();
 
   if ("serviceWorker" in navigator && "SyncManager" in window) {
+    console.log(`[App] Support for Background Sync Detected`);
     navigator.serviceWorker.ready
       .then(sw => {
         const post = {
@@ -195,20 +183,31 @@ form.addEventListener("submit", evt => {
           location: locationInput.value
         };
         writeItem("sync-posts", post)
-          .then(() => sw.sync.register("sync-new-posts"))
           .then(() => {
+            console.log(`[App] Persisted Post to IDB`);
+            return sw.sync.register("sync-new-posts");
+          })
+          .then(() => {
+            console.log(
+              `[App] Registered sync-new-posts event with Service Worker`
+            );
             const snackbarContainer = document.querySelector(
               "#confirmation-toast"
             );
             const data = { message: "Your Post was saved for syncing!" };
             snackbarContainer.MaterialSnackbar.showSnackbar(data);
           })
-          .catch(err => console.log(err));
+          .catch(err =>
+            console.log(
+              `[App] Failed to register a sync-new-posts event with the service worker`,
+              err
+            )
+          );
       })
       .then(() => {
         titleInput.value = "";
         locationInput.value = "";
-        setTimeout(() => loadDataAndUpdate(), 1000);
+        // setTimeout(() => loadDataAndUpdate(), 1000);
       });
   } else {
     sendData().then(() => {
@@ -218,3 +217,15 @@ form.addEventListener("submit", evt => {
     // Fallback if SyncManager isn't supported
   }
 });
+
+if ("serviceWorker" in navigator) {
+  // Handler for messages coming from the service worker
+  navigator.serviceWorker.addEventListener("message", event => {
+    console.log("[App] Received Message from SW: " + event.data);
+    event.ports[0].postMessage("ACK");
+    if (event.data === "refresh") {
+      console.log("[App] Instructed to Refresh Cards: " + event.data);
+      loadDataAndUpdate();
+    }
+  });
+}

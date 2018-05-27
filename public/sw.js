@@ -1,7 +1,7 @@
 importScripts("/src/js/idb.js");
 importScripts("/src/js/utils.js");
 
-const SW_VERSION = 21;
+const SW_VERSION = 42;
 
 // We use our static cache to store our App Shell
 const STATIC_CACHE_NAME = `static-v${SW_VERSION}`;
@@ -27,6 +27,8 @@ const STATIC_FILES = [
 ];
 
 const POSTS_URL = "https://pwagram-439bb.firebaseio.com/posts.json";
+const UPLOAD_POSTS_URL =
+  "https://us-central1-pwagram-439bb.cloudfunctions.net/storePostData";
 
 // We use our dynamic cache to cache requests that are not included in our app shell
 const DYNAMIC_CACHE_NAME = `dynamic-v${SW_VERSION}`;
@@ -42,7 +44,11 @@ const DYNAMIC_CACHE_NAME = `dynamic-v${SW_VERSION}`;
 function trimCache(cacheName, maxItems) {
   caches.open(cacheName).then(cache => {
     cache.keys().then(keys => {
-      console.log("trimming", keys.length, maxItems);
+      console.log(
+        `[Service Worker v${SW_VERSION}] trimming ${cacheName}`,
+        keys.length,
+        maxItems
+      );
       if (keys.length > maxItems) {
         // Recurse until keys.length < maxItems
         cache.delete(keys[0]).then(trimCache(cacheName, maxItems));
@@ -54,12 +60,10 @@ function trimCache(cacheName, maxItems) {
 // Service Worker Lifecycle Events
 // When we install our sw, we cache the static assets of our app shell
 self.addEventListener("install", event => {
-  console.log(`[Service Worker v${SW_VERSION}] Installing...`, event);
+  console.log(`[Service Worker v${SW_VERSION}] Installing...`);
   event.waitUntil(
     caches.open(STATIC_CACHE_NAME).then(cache => {
-      console.log(
-        `[Service Worker v${SW_VERSION}] Precaching App Shell to ${STATIC_CACHE_NAME}...`
-      );
+      console.log(`[Service Worker v${SW_VERSION}] Precaching App Shell`);
       cache.addAll(STATIC_FILES);
     })
   );
@@ -67,7 +71,7 @@ self.addEventListener("install", event => {
 
 // Once our new SW activates, cleanup the caches of the old version
 self.addEventListener("activate", event => {
-  console.log(`[Service Worker v${SW_VERSION}] Activating...`, event);
+  console.log(`[Service Worker v${SW_VERSION}] Activating...`);
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
@@ -113,27 +117,34 @@ self.addEventListener("fetch", event => {
     );
     // Intercept requests for JSON from the endpoint stored at URL
     event.respondWith(
-      fetch(event.request).then(res => {
-        const cloneRes = res.clone();
-        if (cloneRes.ok) {
-          deleteItems("posts").then(() =>
-            cloneRes.json().then(resAsJSON =>
-              Object.values(resAsJSON).forEach(item => {
-                writeItem("posts", item);
-              })
-            )
+      fetch(event.request)
+        .then(res => {
+          const cloneRes = res.clone();
+          if (cloneRes.ok) {
+            deleteItems("posts").then(() =>
+              cloneRes.json().then(resAsJSON =>
+                Object.values(resAsJSON).forEach(item => {
+                  writeItem("posts", item);
+                })
+              )
+            );
+          }
+          return res;
+        })
+        .catch(err => {
+          console.log(
+            `[Service Worker v${SW_VERSION}] failed to fetch ${
+              event.request.url
+            }`,
+            err
           );
-        }
-        return res;
-      })
+          return Promise.reject(err);
+        })
     );
   } else if (isInArray(event.request.url, STATIC_FILES)) {
     // The content we described in our STATIC_FILES is just directly served out of the cache without a network fallback because this should always be setup properly when the service worker activates
     console.log(
-      `[Service Worker v${SW_VERSION}] Serving App Shell asset ${
-        event.request.url
-      } from static cache...`,
-      event
+      `[Service Worker v${SW_VERSION}] Static Cache Hit ${event.request.url}`
     );
     event.respondWith(caches.match(event.request));
   } else {
@@ -146,10 +157,9 @@ self.addEventListener("fetch", event => {
       caches.match(event.request).then(cacheResponse => {
         if (!cacheResponse) {
           console.log(
-            `[Service Worker v${SW_VERSION}] Failed to find ${
+            `[Service Worker v${SW_VERSION}] Dynamic Cache Miss ${
               event.request.url
-            } in the dynamic cache so seeking from network...`,
-            event.request.url
+            }`
           );
           return fetch(event.request)
             .then(fetchResponse => {
@@ -163,10 +173,9 @@ self.addEventListener("fetch", event => {
               if (fetchResponse.ok || fetchResponse.type === "opaque") {
                 return caches.open(DYNAMIC_CACHE_NAME).then(cache => {
                   console.log(
-                    `[Service Worker v${SW_VERSION}] Successfully fetched ${
+                    `[Service Worker v${SW_VERSION}] Successfully fetched and cached ${
                       event.request.url
-                    } from the network. Adding to the dynamic cache...`,
-                    event.request.url
+                    }`
                   );
                   // responses can only be used once, so we need to use the response
                   // object's clone method to cache the response without consuming it
@@ -177,7 +186,7 @@ self.addEventListener("fetch", event => {
                 });
               } else {
                 console.log(
-                  `[Service Worker v${SW_VERSION}] received an unsuccessful response from ${
+                  `[Service Worker v${SW_VERSION}] Failed to fetch ${
                     event.request.url
                   }`,
                   fetchResponse
@@ -188,27 +197,34 @@ self.addEventListener("fetch", event => {
               console.log(
                 `[Service Worker v${SW_VERSION}] Failed to fetch ${
                   event.request.url
-                } from the network. Returning fallback content based on accept headers... ${event.request.headers.get(
-                  "accept"
-                )}`
+                }`
               );
               return caches.open(STATIC_CACHE_NAME).then(cache => {
                 // if requesting HTML but not available, return fallback html
                 if (event.request.headers.get("accept").includes("text/html")) {
+                  console.log(
+                    `[Service Worker v${SW_VERSION}] Serving Fallback HTML${
+                      event.request.url
+                    }`
+                  );
                   return cache.match("/fallback.html");
                 }
                 // if requesting an image that is not available, return failwhale
                 if (event.request.headers.get("accept").includes("image/")) {
+                  console.log(
+                    `[Service Worker v${SW_VERSION}] Serving Fallback Failwhale${
+                      event.request.url
+                    }`
+                  );
                   return cache.match("/src/images/failwhale.jpg");
                 }
               });
             });
         } else {
           console.log(
-            `[Service Worker v${SW_VERSION}] found ${
+            `[Service Worker v${SW_VERSION}] Dynamic Cache Hit ${
               event.request.url
-            } in the dynamic cache so returning...`,
-            event.request.url
+            }`
           );
           return cacheResponse;
         }
@@ -217,16 +233,44 @@ self.addEventListener("fetch", event => {
   }
 });
 
+function send_message_to_client(client, msg) {
+  return new Promise((resolve, reject) => {
+    var msg_chan = new MessageChannel();
+
+    msg_chan.port1.onmessage = function(event) {
+      if (event.data.error) {
+        reject(event.data.error);
+      } else {
+        resolve(event.data);
+      }
+    };
+
+    // Pass a message with a response channel
+    client.postMessage(msg, [msg_chan.port2]);
+  });
+}
+
+function send_message_to_all_clients(msg) {
+  clients.matchAll().then(clients => {
+    clients.forEach(client => {
+      send_message_to_client(client, msg).then(m =>
+        console.log(
+          "[Service Worker v${SW_VERSION}]: Received message from client " + m
+        )
+      );
+    });
+  });
+}
+
 self.addEventListener("sync", function(event) {
-  console.log("[Service Worker] Background syncing", event);
+  console.log("[Service Worker] Background syncing");
   switch (event.tag) {
     case "sync-new-posts":
-      console.log("[Service Worker] Syncing new Posts");
-      event.waitUntil(
+      return event.waitUntil(
         getItems("sync-posts").then(posts => {
-          console.log("Firing");
-          for (let post of posts) {
-            fetch(POSTS_URL, {
+          console.log("[Service Worker] Syncing new Posts", posts);
+          const arrOfPromises = posts.map(post =>
+            fetch(UPLOAD_POSTS_URL, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -242,26 +286,47 @@ self.addEventListener("sync", function(event) {
             })
               .then(res => {
                 if (res.ok) {
+                  console.log(`[Service Worker] Synced post with server`, post);
+                  return res
+                    .json()
+                    .then(resData => deleteItem("sync-posts", resData.id));
+                } else {
                   console.log(
-                    `[Service Worker] Successfully synced cached post with server`,
-                    post
+                    `[Service Worker] Error syncing post ${post.id}`,
+                    res
                   );
-                  deleteItem("sync-posts", post.id);
+                  return Promise.reject(res.statusText);
                 }
               })
               .catch(err => {
                 console.log(
-                  `[Service Worker] Encountered error syncing post ${
-                    post.id
-                  } with server`,
+                  `[Service Worker] Error syncing post ${post.id}`,
                   err
                 );
-              });
-          }
+                return Promise.reject(err);
+              })
+          );
+          return Promise.all(arrOfPromises)
+            .then(res => {
+              console.log(
+                `[Service Worker] Successfully synced all posts to server`
+              );
+              send_message_to_all_clients("refresh");
+              return Promise.resolve(res);
+            })
+            .catch(err => {
+              console.log(
+                `[Service Worker] Failed to sync all posts to server`,
+                err
+              );
+              return Promise.reject(err);
+            });
         })
       );
       break;
     default:
-      console.log(`[Service Worker] Error: ${event.tag} is an unknown tag`);
+      console.log(
+        `[Service Worker] Error: ${event.tag} is an unknown sync tag`
+      );
   }
 });

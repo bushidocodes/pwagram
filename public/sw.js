@@ -330,3 +330,23 @@ self.addEventListener("sync", function(event) {
       );
   }
 });
+
+self.addEventListener("notificationclick", event => {
+  const { notification, action } = event;
+  console.log(
+    `[Service Worker] User clicked${
+      action ? `${action} in` : ""
+    } notification ${notification.tag}`
+  );
+  if (action === "confirm") {
+  } else {
+    // console.log(`[Service Worker] User selected ${action} in a notification`);
+  }
+  notification.close();
+});
+
+// This doesn't seem to be supported by Chome on Mac
+self.addEventListener("notificationclose", event => {
+  const { notification, action } = event;
+  console.log(`[Service Worker] User closed notification ${notification.tag}`);
+});

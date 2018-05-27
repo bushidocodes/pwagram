@@ -4,6 +4,9 @@ var closeCreatePostModalButton = document.querySelector(
   "#close-create-post-modal-btn"
 );
 var sharedMomentsArea = document.querySelector("#shared-moments");
+var form = document.querySelector("form");
+var titleInput = document.querySelector("#title");
+var locationInput = document.querySelector("#location");
 
 function openCreatePostModal() {
   createPostArea.style.transform = "translateY(0)";
@@ -54,7 +57,6 @@ function clearCards() {
 }
 
 function createCard(card) {
-  console.log("creating card", card);
   var cardWrapper = document.createElement("div");
   cardWrapper.className = "shared-moment-card mdl-card mdl-shadow--2dp";
   var cardTitle = document.createElement("div");
@@ -101,32 +103,36 @@ function updateUI(cards) {
   cards.forEach(card => createCard(card));
 }
 
-const url = "https://pwagram-439bb.firebaseio.com/posts.json";
-let networkDataReceived = false;
-// Fetch from Web
-fetch(url)
-  .then(res => {
-    if (res) {
-      return res.json();
-    }
-  })
-  .then(data => {
-    networkDataReceived = true;
-    console.log("From Web: ", data);
-    // When we get this data, always blow away the data rendered from the cache, as this is more fresh
-    clearCards();
-    updateUI(Object.values(data));
-  });
+function loadDataAndUpdate() {
+  const url = "https://pwagram-439bb.firebaseio.com/posts.json";
+  let networkDataReceived = false;
+  // Fetch from Web
+  fetch(url)
+    .then(res => {
+      if (res) {
+        return res.json();
+      }
+    })
+    .then(data => {
+      networkDataReceived = true;
+      console.log("From Web: ", data);
+      // When we get this data, always blow away the data rendered from the cache, as this is more fresh
+      clearCards();
+      updateUI(Object.values(data));
+    });
 
-// Fetch from IndexedDB
-if ("indexedDB" in window) {
-  getItems("posts").then(posts => {
-    if (!networkDataReceived) {
-      console.log("From cache", posts);
-      updateUI(posts);
-    }
-  });
+  // Fetch from IndexedDB
+  if ("indexedDB" in window) {
+    getItems("posts").then(posts => {
+      if (!networkDataReceived) {
+        console.log("From cache", posts);
+        updateUI(posts);
+      }
+    });
+  }
 }
+
+loadDataAndUpdate();
 
 // Fetch from Cache
 // if ("caches" in window) {
@@ -150,3 +156,65 @@ if ("indexedDB" in window) {
 // fetch("https://httpbin.org/get")
 //   .then(res => res.json())
 //   .then(data => createCard());
+
+function sendData() {
+  return fetch(url, {
+    method: "post",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json"
+    },
+    body: JSON.stringify({
+      id: new Date().toISOString,
+      title: titleInput.value,
+      location: locationInput.value,
+      image:
+        "https://firebasestorage.googleapis.com/v0/b/pwagram-439bb.appspot.com/o/18881854_10100539690981860_7876229254760009149_n.jpg?alt=media&token=a49cd401-bd51-4123-80c8-c2536c657944"
+    })
+  }).then(res => {
+    console.log(res);
+    loadDataAndUpdate();
+  });
+}
+
+form.addEventListener("submit", evt => {
+  evt.preventDefault();
+  // exit if the fields are empty
+  if (titleInput.value.trim() === "" || locationInput.value.trim() === "") {
+    alert("Please enter valid data!");
+    return;
+  }
+  closeCreatePostModal();
+
+  if ("serviceWorker" in navigator && "SyncManager" in window) {
+    navigator.serviceWorker.ready
+      .then(sw => {
+        const post = {
+          id: new Date().toISOString(),
+          title: titleInput.value,
+          location: locationInput.value
+        };
+        writeItem("sync-posts", post)
+          .then(() => sw.sync.register("sync-new-posts"))
+          .then(() => {
+            const snackbarContainer = document.querySelector(
+              "#confirmation-toast"
+            );
+            const data = { message: "Your Post was saved for syncing!" };
+            snackbarContainer.MaterialSnackbar.showSnackbar(data);
+          })
+          .catch(err => console.log(err));
+      })
+      .then(() => {
+        titleInput.value = "";
+        locationInput.value = "";
+        setTimeout(() => loadDataAndUpdate(), 1000);
+      });
+  } else {
+    sendData().then(() => {
+      titleInput.value = "";
+      locationInput.value = "";
+    });
+    // Fallback if SyncManager isn't supported
+  }
+});

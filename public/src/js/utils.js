@@ -3,9 +3,14 @@ const dbPromise = idb.open("posts-store", 1, db => {
   if (!db.objectStoreNames.contains("posts")) {
     db.createObjectStore("posts", { keyPath: "id" });
   }
+  // create an object store to cache outgoing post submissions
+  if (!db.objectStoreNames.contains("sync-posts")) {
+    db.createObjectStore("sync-posts", { keyPath: "id" });
+  }
 });
 
 function writeItem(storeName, item) {
+  console.log(`Writing item to ${storeName}`, item);
   return dbPromise.then(db => {
     const tx = db.transaction(storeName, "readwrite");
     const store = tx.objectStore(storeName);

@@ -52,7 +52,7 @@ function displayConfirmNotification() {
   };
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.ready.then(sw => {
-      sw.showNotification(`${title} - SW`, options);
+      sw.showNotification(title, options);
     });
   } else {
     new Notification(title, options);
@@ -65,14 +65,40 @@ function configurePushSub() {
   }
 
   navigator.serviceWorker.ready.then(sw => {
-    sw.pushManager.getSubscription().then(subs => {
-      if (!subs) {
-        sw.pushManager.subscribe();
-        // Create new subscription
-      } else {
-        // We already have a subscription
-      }
-    });
+    sw.pushManager
+      .getSubscription()
+      .then(subs => {
+        if (!subs) {
+          const VAPID_PUBLIC_KEY =
+            "BH1lo34DNnIy__lc7nzIMyDr2tBmGqqoRThEoRzoj2GehQ8Yg4_X2JvkHfX06Vbqxjys6I0fz2mGLu2nkC45S5o";
+          const convertedVapidPublicKey = urlBase64ToUint8Array(
+            VAPID_PUBLIC_KEY
+          );
+          return sw.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: convertedVapidPublicKey
+          });
+          // Create new subscription
+        } else {
+          // We already have a subscription
+        }
+      })
+      .then(newSub =>
+        fetch("https://pwagram-439bb.firebaseio.com/subscriptions.json", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify(newSub)
+        })
+      )
+      .then(res => {
+        if (res.ok) {
+          displayConfirmNotification();
+        }
+      })
+      .catch(err => console.log(err));
   });
 }
 
@@ -87,7 +113,7 @@ function askForNotificationPermission() {
       enableNotificationsButtons.forEach(btn => {
         btn.style.display = "inline-block";
       });
-      displayConfirmNotification();
+      configurePushSub();
     }
   });
 }

@@ -44,7 +44,8 @@ exports.storePostData = functions.https.onRequest((req, res) =>
             },
             JSON.stringify({
               title: "New Post",
-              content: "New Post Added!!!"
+              content: "New Post Added!!!",
+              openUrl: "/"
             })
           )
         )

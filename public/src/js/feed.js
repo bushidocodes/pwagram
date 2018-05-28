@@ -1,20 +1,22 @@
-var shareImageButton = document.querySelector("#share-image-button");
-var createPostArea = document.querySelector("#create-post");
-var closeCreatePostModalButton = document.querySelector(
+const shareImageButton = document.querySelector("#share-image-button");
+const createPostArea = document.querySelector("#create-post");
+const closeCreatePostModalButton = document.querySelector(
   "#close-create-post-modal-btn"
 );
-var sharedMomentsArea = document.querySelector("#shared-moments");
-var form = document.querySelector("form");
-var titleInput = document.querySelector("#title");
-var locationInput = document.querySelector("#location");
+const sharedMomentsArea = document.querySelector("#shared-moments");
+const form = document.querySelector("form");
+const titleInput = document.querySelector("#title");
+const locationInput = document.querySelector("#location");
 
+/**
+ * Slides the Create Post form up from below the viewport
+ * Triggers the PWA Installation prompt if cached because this shows user intent
+ */
 function openCreatePostModal() {
   createPostArea.style.transform = "translateY(0)";
-  // createPostArea.style.transform = "translateY(0)";
-  // We want to present the user the PWA installation prompt if
-  // they demonstrate intent to upload a picture. This is only
-  // possible if we've captured and deferred the prompt. We do
-  // this by listening to the beforeinstallprompt event in app.js
+  // We want to present the user the PWA installation prompt if they demonstrate intent to upload a picture.
+  // This is only possible if we've captured and deferred the prompt.
+  // We do this by listening to the beforeinstallprompt event in app.js
   if (window.deferredPrompt) {
     window.deferredPrompt.prompt();
     window.deferredPrompt.userChoice.then(choiceResult => {
@@ -23,18 +25,18 @@ function openCreatePostModal() {
       } else {
         console.log("[App] User added PWA to Home Screen");
       }
-
       window.deferredPrompt = null;
     });
   }
 }
+shareImageButton.addEventListener("click", openCreatePostModal);
 
+/**
+ * Slides the Create Post form below the viewport
+ */
 function closeCreatePostModal() {
   createPostArea.style.transform = "translateY(100vh)";
 }
-
-shareImageButton.addEventListener("click", openCreatePostModal);
-
 closeCreatePostModalButton.addEventListener("click", closeCreatePostModal);
 
 /**
@@ -46,6 +48,11 @@ function clearCards() {
   }
 }
 
+/**
+ * Given an object representing a post, assembles a card for that post and appends to the shared moments area
+ *
+ * @param {any} card
+ */
 function createCard(card) {
   var cardWrapper = document.createElement("div");
   cardWrapper.className = "shared-moment-card mdl-card mdl-shadow--2dp";
@@ -56,7 +63,6 @@ function createCard(card) {
   cardTitle.style.backgroundRepeat = "no-repeat";
   cardTitle.style.backgroundColor = "black";
   cardTitle.style.backgroundPosition = "center";
-  // cardTitle.style.height = "auto";
   cardWrapper.appendChild(cardTitle);
   var cardTitleTextElement = document.createElement("h2");
   cardTitleTextElement.className = "mdl-card__title-text";
@@ -71,10 +77,18 @@ function createCard(card) {
   sharedMomentsArea.appendChild(cardWrapper);
 }
 
-function updateUI(cards) {
+/**
+ * Given an array of posts, create cards for each post and append all cards to the shared moments area
+ *
+ * @param {any} cards
+ */
+function createCards(cards) {
   cards.forEach(card => createCard(card));
 }
 
+/**
+ * Fetches posts from the network or IDB depending on network conditions and refreshes the sharedMoments area
+ */
 function loadDataAndUpdate() {
   const url = "https://pwagram-439bb.firebaseio.com/posts.json";
   console.log(
@@ -93,7 +107,7 @@ function loadDataAndUpdate() {
       console.log("[App] Successfully fetched posts from network ", data);
       // When we get this data, always blow away the data rendered from the cache, as this is more fresh
       clearCards();
-      updateUI(Object.values(data));
+      createCards(Object.values(data));
     })
     .catch(err => {
       console.log(`[App] Failed to fetch posts from network`);
@@ -104,7 +118,8 @@ function loadDataAndUpdate() {
     getItems("posts").then(posts => {
       if (!networkDataReceived) {
         console.log("[App] Successfully fetched posts from IDB");
-        updateUI(posts);
+        clearCards();
+        createCards(posts);
       }
     });
   }
@@ -112,38 +127,13 @@ function loadDataAndUpdate() {
 
 loadDataAndUpdate();
 
-// Fetch from Cache
-// if ("caches" in window) {
-//   caches
-//     .match(url)
-//     .then(res => {
-//       if (res) {
-//         return res.json();
-//       }
-//     })
-//     .then(data => {
-//       console.log("From Cache ", data);
-//       // If we've already received a response from the network, it's more current than this cached data, so don't do anything
-//       if (!networkDataReceived && data) {
-//         clearCards();
-//         updateUI(Object.values(data));
-//       }
-//     });
-// }
-
-// fetch("https://httpbin.org/get")
-//   .then(res => res.json())
-//   .then(data => createCard());
-
-function sendData() {
-  const reqBody = {
-    id: new Date().toISOString,
-    title: titleInput.value,
-    location: locationInput.value,
-    image:
-      "https://firebasestorage.googleapis.com/v0/b/pwagram-439bb.appspot.com/o/18881854_10100539690981860_7876229254760009149_n.jpg?alt=media&token=a49cd401-bd51-4123-80c8-c2536c657944"
-  };
-  console.log(`[App] Submitting post data`, reqBody);
+/**
+ * Builds a post from the create post form and submits to the server.
+ * This is used as a fallback in browsers that don't support service worker and Sync Manager
+ * @returns
+ */
+function submitPost(post) {
+  console.log(`[App] Submitting post data`, post);
   return fetch(
     "https://us-central1-pwagram-439bb.cloudfunctions.net/storePostData",
     {
@@ -152,69 +142,79 @@ function sendData() {
         "Content-Type": "application/json",
         Accept: "application/json"
       },
-      body: JSON.stringify(reqBody)
+      body: JSON.stringify(post)
     }
   )
     .then(res => {
       console.log(`[App] Successfully submitted post data`, res);
-      loadDataAndUpdate();
+      // After a second refresh the shared moments area
+      setTimeout(() => loadDataAndUpdate(), 1000);
     })
     .catch(err => {
       console.log(`[App] Failed to submit post data`, res);
     });
 }
 
+/**
+ * Submit post via Sync Manager if supported to enable offline caching
+ */
+function submitPostViaSyncManager(post) {
+  return navigator.serviceWorker.ready.then(sw => {
+    writeItem("sync-posts", post)
+      .then(() => {
+        console.log(`[App] Persisted Post to IDB`);
+        return sw.sync.register("sync-new-posts");
+      })
+      .then(() => {
+        console.log(
+          `[App] Registered sync-new-posts event with Service Worker`
+        );
+        const snackbarContainer = document.querySelector("#confirmation-toast");
+        const data = { message: "Your Post was saved for syncing!" };
+        snackbarContainer.MaterialSnackbar.showSnackbar(data);
+      })
+      .catch(err =>
+        console.log(
+          `[App] Failed to register a sync-new-posts event with the service worker`,
+          err
+        )
+      );
+  });
+}
+
+function buildPostFromForm() {
+  return {
+    id: new Date().toISOString(),
+    title: titleInput.value,
+    location: locationInput.value,
+    image:
+      "https://firebasestorage.googleapis.com/v0/b/pwagram-439bb.appspot.com/o/18881854_10100539690981860_7876229254760009149_n.jpg?alt=media&token=a49cd401-bd51-4123-80c8-c2536c657944"
+  };
+}
+
+function clearPostForm() {
+  titleInput.value = "";
+  locationInput.value = "";
+}
+
 form.addEventListener("submit", evt => {
   evt.preventDefault();
-  // exit if the fields are empty
+  // Validate Post Form
   if (titleInput.value.trim() === "" || locationInput.value.trim() === "") {
     alert("Please enter valid data!");
     return;
   }
   closeCreatePostModal();
+  const post = buildPostFromForm();
 
   if ("serviceWorker" in navigator && "SyncManager" in window) {
     console.log(`[App] Support for Background Sync Detected`);
-    navigator.serviceWorker.ready
-      .then(sw => {
-        const post = {
-          id: new Date().toISOString(),
-          title: titleInput.value,
-          location: locationInput.value
-        };
-        writeItem("sync-posts", post)
-          .then(() => {
-            console.log(`[App] Persisted Post to IDB`);
-            return sw.sync.register("sync-new-posts");
-          })
-          .then(() => {
-            console.log(
-              `[App] Registered sync-new-posts event with Service Worker`
-            );
-            const snackbarContainer = document.querySelector(
-              "#confirmation-toast"
-            );
-            const data = { message: "Your Post was saved for syncing!" };
-            snackbarContainer.MaterialSnackbar.showSnackbar(data);
-          })
-          .catch(err =>
-            console.log(
-              `[App] Failed to register a sync-new-posts event with the service worker`,
-              err
-            )
-          );
-      })
-      .then(() => {
-        titleInput.value = "";
-        locationInput.value = "";
-        // setTimeout(() => loadDataAndUpdate(), 1000);
-      });
+    submitPostViaSyncManager(post).then(() => clearPostForm());
   } else {
-    sendData().then(() => {
-      titleInput.value = "";
-      locationInput.value = "";
-    });
-    // Fallback if SyncManager isn't supported
+    console.log(
+      `[App] Browser does not support Background Sync. Executing fallback`
+    );
+    submitPost(post).then(() => clearPostForm());
   }
 });
 
@@ -222,10 +222,14 @@ if ("serviceWorker" in navigator) {
   // Handler for messages coming from the service worker
   navigator.serviceWorker.addEventListener("message", event => {
     console.log("[App] Received Message from SW: " + event.data);
+    // This is not really used, but this shows how to send an immediate response using the second channel
     event.ports[0].postMessage("ACK");
-    if (event.data === "refresh") {
-      console.log("[App] Instructed to Refresh Cards: " + event.data);
-      loadDataAndUpdate();
+    switch (event.data) {
+      // Allows the service worker to tell the client to refresh the shared moments area if new posts are available
+      case "refresh":
+        console.log("[App] Instructed to Refresh Cards: " + event.data);
+        loadDataAndUpdate();
+        break;
     }
   });
 }

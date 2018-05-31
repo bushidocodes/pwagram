@@ -7,13 +7,126 @@ const sharedMomentsArea = document.querySelector("#shared-moments");
 const form = document.querySelector("form");
 const titleInput = document.querySelector("#title");
 const locationInput = document.querySelector("#location");
+const videoPlayer = document.querySelector("#player");
+const canvasElement = document.querySelector("#canvas");
+const captureButton = document.querySelector("#capture-btn");
+const imagePicker = document.querySelector("#image-picker");
+const imagePickerArea = document.querySelector("#pick-image");
+let picture;
+
+const locationButton = document.querySelector("#location-btn");
+const locationLoader = document.querySelector("#location-loader");
+let fetchedLocation = { lat: 0, lng: 0 };
+
+locationButton.addEventListener("click", event => {
+  if (!("geolocation" in navigator)) return;
+
+  locationButton.style.display = "none";
+  locationLoader.style.display = "block";
+
+  let sawAlert = false;
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      locationButton.style.display = "inline";
+      locationLoader.style.display = "none";
+      fetchedLocation = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      };
+      // TODO: Fetch location from a geocoding API and output location text
+      // Just hardcode the value for now to fake it
+      locationInput.value = "In Alexandria, VA";
+      document.querySelector("#manual-location").classList.add("is-focused");
+    },
+    err => {
+      // Error callback
+      console.log(err);
+      locationButton.style.display = "inline";
+      locationLoader.style.display = "none";
+      if (!sawAlert) {
+        alert("Failed to fetch location. Please enter manually!");
+        sawAlert = true;
+      }
+      fetchedLocation = { lat: 0, lng: 0 };
+    },
+    {
+      timeout: 10000 // timeout getting location after 10 seconds
+    }
+  );
+});
+
+function initializeLocation() {
+  // If the browser doesn't support the geolocation API, hide the button
+  if (!("geolocation" in navigator)) {
+    locationButton.style.display = "none";
+  }
+}
+
+/**
+ * polyfill for navigator.mediaDevices.getUserMedia
+ */
+function initializeMedia() {
+  if (!("mediaDevices" in navigator)) {
+    navigator.mediaDevices = {};
+  }
+
+  if (!("getUserMedia" in navigator.mediaDevices)) {
+    navigator.mediaDevices.getUserMedia = constraints => {
+      const getUserMedia =
+        navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+
+      if (!getUserMedia) {
+        return Promise.reject(new Error("getUserMedia is not implemented"));
+      }
+
+      return new Promise((resolve, reject) =>
+        getUserMedia.call(navigator, contrainers, resolve, reject)
+      );
+    };
+  }
+
+  navigator.mediaDevices
+    .getUserMedia({ video: true })
+    .then(stream => {
+      videoPlayer.srcObject = stream;
+      videoPlayer.style.display = "block";
+    })
+    .catch(err => {
+      imagePickerArea.style.display = "block";
+    });
+}
+
+captureButton.addEventListener("click", evt => {
+  canvasElement.style.display = "block";
+  videoPlayer.style.display = "none";
+  captureButton.style.display = "none";
+  const context = canvasElement.getContext("2d");
+  context.drawImage(
+    videoPlayer,
+    0,
+    0,
+    canvas.width,
+    videoPlayer.videoHeight / (videoPlayer.videoWidth / canvas.width) // maintain aspect ratio
+  );
+  videoPlayer.srcObject.getVideoTracks().forEach(track => track.stop());
+  picture = dataURItoBlob(canvasElement.toDataURL());
+});
+
+imagePicker.addEventListener("change", event => {
+  picture = event.target.files[0];
+});
 
 /**
  * Slides the Create Post form up from below the viewport
  * Triggers the PWA Installation prompt if cached because this shows user intent
  */
 function openCreatePostModal() {
-  createPostArea.style.transform = "translateY(0)";
+  setTimeout(() => {
+    createPostArea.style.transform = "translateY(0)";
+  }, 1);
+  initializeMedia();
+  initializeLocation();
   // We want to present the user the PWA installation prompt if they demonstrate intent to upload a picture.
   // This is only possible if we've captured and deferred the prompt.
   // We do this by listening to the beforeinstallprompt event in app.js
@@ -35,7 +148,23 @@ shareImageButton.addEventListener("click", openCreatePostModal);
  * Slides the Create Post form below the viewport
  */
 function closeCreatePostModal() {
-  createPostArea.style.transform = "translateY(100vh)";
+  // Hide the image picker
+  imagePickerArea.style.display = "none";
+  // Reset Selfie controls
+  videoPlayer.style.display = "none";
+  canvasElement.style.display = "none";
+  captureButton.style.display = "inline";
+  // Reset geolocation controls
+  locationButton.style.display = "inline";
+  locationLoader.style.display = "none";
+  // Stop all open video tracks
+  if (videoPlayer.srcObject) {
+    videoPlayer.srcObject.getVideoTracks().forEach(track => track.stop());
+  }
+  // Slide the modal offscreen after a short timeout to give the video cleanup task time to complete
+  setTimeout(() => {
+    createPostArea.style.transform = "translateY(100vh)";
+  }, 1);
 }
 closeCreatePostModalButton.addEventListener("click", closeCreatePostModal);
 
@@ -132,34 +261,48 @@ loadDataAndUpdate();
  * This is used as a fallback in browsers that don't support service worker and Sync Manager
  * @returns
  */
-function submitPost(post) {
-  console.log(`[App] Submitting post data`, post);
+function submitPost() {
+  var id = new Date().toISOString();
+  var postData = new FormData();
+  postData.append("id", id);
+  postData.append("title", titleInput.value);
+  postData.append("location", locationInput.value);
+  postData.append("file", picture, id + ".png");
+  postData.append("rawLocationLat", fetchedLocation.lat);
+  postData.append("rawLocationLng", fetchedLocation.lng);
+  postData.append("file", picture, id + ".png");
+  console.log(`[App] Submitting post data`, postData);
+
   return fetch(
     "https://us-central1-pwagram-439bb.cloudfunctions.net/storePostData",
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify(post)
+      body: postData
     }
   )
     .then(res => {
       console.log(`[App] Successfully submitted post data`, res);
+      clearPostForm();
       // After a second refresh the shared moments area
       setTimeout(() => loadDataAndUpdate(), 1000);
     })
     .catch(err => {
-      console.log(`[App] Failed to submit post data`, res);
+      console.log(`[App] Failed to submit post data`, err);
     });
 }
 
 /**
  * Submit post via Sync Manager if supported to enable offline caching
  */
-function submitPostViaSyncManager(post) {
+function submitPostViaSyncManager() {
   return navigator.serviceWorker.ready.then(sw => {
+    var post = {
+      id: new Date().toISOString(),
+      title: titleInput.value,
+      location: locationInput.value,
+      picture: picture,
+      rawLocation: fetchedLocation
+    };
     writeItem("sync-posts", post)
       .then(() => {
         console.log(`[App] Persisted Post to IDB`);
@@ -182,16 +325,6 @@ function submitPostViaSyncManager(post) {
   });
 }
 
-function buildPostFromForm() {
-  return {
-    id: new Date().toISOString(),
-    title: titleInput.value,
-    location: locationInput.value,
-    image:
-      "https://firebasestorage.googleapis.com/v0/b/pwagram-439bb.appspot.com/o/18881854_10100539690981860_7876229254760009149_n.jpg?alt=media&token=a49cd401-bd51-4123-80c8-c2536c657944"
-  };
-}
-
 function clearPostForm() {
   titleInput.value = "";
   locationInput.value = "";
@@ -205,16 +338,15 @@ form.addEventListener("submit", evt => {
     return;
   }
   closeCreatePostModal();
-  const post = buildPostFromForm();
 
   if ("serviceWorker" in navigator && "SyncManager" in window) {
     console.log(`[App] Support for Background Sync Detected`);
-    submitPostViaSyncManager(post).then(() => clearPostForm());
+    submitPostViaSyncManager().then(() => clearPostForm());
   } else {
     console.log(
       `[App] Browser does not support Background Sync. Executing fallback`
     );
-    submitPost(post).then(() => clearPostForm());
+    submitPost();
   }
 });
 

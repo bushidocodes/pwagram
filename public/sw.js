@@ -1,7 +1,7 @@
 importScripts("/src/js/idb.js");
 importScripts("/src/js/utils.js");
 
-const SW_VERSION = 53;
+const SW_VERSION = 78;
 
 // We use our static cache to store our App Shell
 const STATIC_CACHE_NAME = `static-v${SW_VERSION}`;
@@ -161,13 +161,13 @@ function fetchAndCachePosts(event) {
     .then(res => {
       const cloneRes = res.clone();
       if (cloneRes.ok) {
-        deleteItems("posts").then(() =>
-          cloneRes.json().then(resAsJSON =>
+        deleteItems("posts")
+          .then(() => cloneRes.json())
+          .then(resAsJSON =>
             Object.values(resAsJSON).forEach(item => {
               writeItem("posts", item);
             })
-          )
-        );
+          );
       }
       return res;
     })
@@ -269,15 +269,19 @@ function fetchFromDynamicCacheAndFallbackToNetwork(event) {
 function syncNewPosts() {
   return getItems("sync-posts").then(posts => {
     console.log(`[Service Worker v${SW_VERSION}] Syncing new Posts`, posts);
-    const arrOfPromises = posts.map(post =>
+    const arrOfPromises = posts.map(post => {
+      const postData = new FormData();
+      postData.append("id", post.id);
+      postData.append("title", post.title);
+      postData.append("location", post.location);
+      postData.append("rawLocationLat", post.rawLocation.lat);
+      postData.append("rawLocationLng", post.rawLocation.lng);
+      postData.append("file", post.picture, `${post.id}.png`);
+
       // Upload the post to the server
-      fetch(UPLOAD_POSTS_URL, {
+      return fetch(UPLOAD_POSTS_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
-        body: JSON.stringify(post)
+        body: postData
       })
         .then(res => {
           // and delete the post from the sync-posts store if successful
@@ -303,8 +307,8 @@ function syncNewPosts() {
             err
           );
           return Promise.reject(err);
-        })
-    );
+        });
+    });
     // After all posts are successfully uploaded
     return Promise.all(arrOfPromises)
       .then(res => {

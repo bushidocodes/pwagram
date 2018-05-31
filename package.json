@@ -5,7 +5,7 @@
     "A simple Instagram clone built using Progressive Web App techniques.",
   "main": "index.js",
   "scripts": {
-    "start": "http-server -p 1337 -c-1",
+    "start": "http-server -p 1338 -c-1",
     "remote-ios": "remotedebug_ios_webkit_adapter --port=9000"
   },
   "keywords": ["pwa", "progressive", "web", "app"],
